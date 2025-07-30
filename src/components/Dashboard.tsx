@@ -7,50 +7,90 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onClose }: DashboardProps) {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, token } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState({
     name: user?.name || '',
-    age: user?.age || '',
-    work: user?.work || ''
+    bio: user?.bio || '',
+    dateOfBirth: user?.dateOfBirth ? user.dateOfBirth.split('T')[0] : ''
+  });
+  const [activities, setActivities] = useState([]);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalProjects: 0,
+    totalComments: 0,
+    totalActivities: 0
   });
 
   if (!user) return null;
 
-  const handleProfileUpdate = () => {
-    updateProfile({
+  const handleProfileUpdate = async () => {
+    setLoading(true);
+    const success = await updateProfile({
       name: profileData.name,
-      age: profileData.age ? Number(profileData.age) : undefined,
-      work: profileData.work
+      bio: profileData.bio,
+      dateOfBirth: profileData.dateOfBirth
     });
-    setIsEditingProfile(false);
+    
+    if (success) {
+      setIsEditingProfile(false);
+    }
+    setLoading(false);
   };
 
-  const getFavoriteProjects = () => {
-    const projects = JSON.parse(localStorage.getItem('projects') || '[]');
-    return projects.filter((project: any) => project.likes.includes(user.id));
+  const fetchUserActivities = async () => {
+    if (!token) return;
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/activities/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setActivities(data.activities);
+      }
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+    }
   };
 
-  const getBlogStats = () => {
-    const posts = JSON.parse(localStorage.getItem('blogPosts') || '[]');
-    const userLikes = posts.reduce((total: number, post: any) => 
-      total + (post.likes.includes(user.id) ? 1 : 0), 0
-    );
-    const userComments = posts.reduce((total: number, post: any) => 
-      total + post.comments.filter((comment: any) => comment.userId === user.id).length, 0
-    );
-    return { userLikes, userComments, totalPosts: posts.length };
+  const fetchStats = async () => {
+    if (!token || user.role !== 'owner') return;
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/activities/stats`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Process stats data
+        console.log('Stats:', data);
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
   };
 
-  const favoriteProjects = getFavoriteProjects();
-  const blogStats = getBlogStats();
+  React.useEffect(() => {
+    fetchUserActivities();
+    if (user.role === 'owner') {
+      fetchStats();
+    }
+  }, [token, user.role]);
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: <BarChart3 className="w-5 h-5" /> },
     { id: 'profile', label: 'Profile', icon: <User className="w-5 h-5" /> },
     { id: 'activity', label: 'Activity', icon: <Activity className="w-5 h-5" /> },
-    { id: 'favorites', label: 'Favorites', icon: <Heart className="w-5 h-5" /> },
+    ...(user.role === 'owner' ? [{ id: 'users', label: 'Users', icon: <User className="w-5 h-5" /> }] : []),
   ];
 
   return (
@@ -67,7 +107,7 @@ export default function Dashboard({ onClose }: DashboardProps) {
                 <div>
                   <h1 className="text-2xl font-bold">{user.name}</h1>
                   <p className="text-blue-100">{user.email}</p>
-                  {user.isOwner && (
+                  {user.role === 'owner' && (
                     <span className="inline-block bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full text-sm font-semibold mt-1">
                       OWNER
                     </span>
@@ -124,26 +164,14 @@ export default function Dashboard({ onClose }: DashboardProps) {
                       </div>
                     </div>
 
-                    <div className="bg-red-50 dark:bg-red-900/20 p-6 rounded-xl">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-red-600 dark:text-red-400 text-sm font-medium">Liked Projects</p>
-                          <p className="text-2xl font-bold text-red-800 dark:text-red-300">{favoriteProjects.length}</p>
-                        </div>
-                        <div className="w-12 h-12 bg-red-100 dark:bg-red-800 rounded-lg flex items-center justify-center">
-                          <Heart className="w-6 h-6 text-red-600 dark:text-red-400" />
-                        </div>
-                      </div>
-                    </div>
-
                     <div className="bg-green-50 dark:bg-green-900/20 p-6 rounded-xl">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-green-600 dark:text-green-400 text-sm font-medium">Blog Likes</p>
-                          <p className="text-2xl font-bold text-green-800 dark:text-green-300">{blogStats.userLikes}</p>
+                          <p className="text-green-600 dark:text-green-400 text-sm font-medium">Activities</p>
+                          <p className="text-2xl font-bold text-green-800 dark:text-green-300">{activities.length}</p>
                         </div>
                         <div className="w-12 h-12 bg-green-100 dark:bg-green-800 rounded-lg flex items-center justify-center">
-                          <Heart className="w-6 h-6 text-green-600 dark:text-green-400" />
+                          <Activity className="w-6 h-6 text-green-600 dark:text-green-400" />
                         </div>
                       </div>
                     </div>
@@ -151,11 +179,13 @@ export default function Dashboard({ onClose }: DashboardProps) {
                     <div className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-xl">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-purple-600 dark:text-purple-400 text-sm font-medium">Comments</p>
-                          <p className="text-2xl font-bold text-purple-800 dark:text-purple-300">{blogStats.userComments}</p>
+                          <p className="text-purple-600 dark:text-purple-400 text-sm font-medium">Account Age</p>
+                          <p className="text-2xl font-bold text-purple-800 dark:text-purple-300">
+                            {Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days
+                          </p>
                         </div>
                         <div className="w-12 h-12 bg-purple-100 dark:bg-purple-800 rounded-lg flex items-center justify-center">
-                          <MessageCircle className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                          <User className="w-6 h-6 text-purple-600 dark:text-purple-400" />
                         </div>
                       </div>
                     </div>
@@ -175,12 +205,12 @@ export default function Dashboard({ onClose }: DashboardProps) {
                       </button>
                       
                       <button
-                        onClick={() => setActiveTab('favorites')}
+                        onClick={() => setActiveTab('activity')}
                         className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-all text-left"
                       >
-                        <Heart className="w-8 h-8 text-red-600 mb-2" />
-                        <h4 className="font-semibold text-gray-800 dark:text-white">View Favorites</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">See your liked projects</p>
+                        <Activity className="w-8 h-8 text-red-600 mb-2" />
+                        <h4 className="font-semibold text-gray-800 dark:text-white">View Activity</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">See your recent activities</p>
                       </button>
                       
                       <button
@@ -188,8 +218,8 @@ export default function Dashboard({ onClose }: DashboardProps) {
                         className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-all text-left"
                       >
                         <Activity className="w-8 h-8 text-green-600 mb-2" />
-                        <h4 className="font-semibold text-gray-800 dark:text-white">Activity Log</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Review your recent activities</p>
+                        <h4 className="font-semibold text-gray-800 dark:text-white">Profile Settings</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Update your profile information</p>
                       </button>
                     </div>
                   </div>
@@ -236,45 +266,48 @@ export default function Dashboard({ onClose }: DashboardProps) {
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Age
+                          Bio
                         </label>
                         {isEditingProfile ? (
-                          <input
-                            type="number"
-                            value={profileData.age}
-                            onChange={(e) => setProfileData({ ...profileData, age: e.target.value })}
+                          <textarea
+                            value={profileData.bio}
+                            onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
                             className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-white"
-                            placeholder="Enter your age"
+                            placeholder="Tell us about yourself"
+                            rows={3}
                           />
                         ) : (
-                          <p className="p-3 bg-white dark:bg-gray-800 rounded-lg">{user.age || 'Not specified'}</p>
+                          <p className="p-3 bg-white dark:bg-gray-800 rounded-lg">{user.bio || 'Not specified'}</p>
                         )}
                       </div>
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Work/Profession
+                          Date of Birth
                         </label>
                         {isEditingProfile ? (
                           <input
-                            type="text"
-                            value={profileData.work}
-                            onChange={(e) => setProfileData({ ...profileData, work: e.target.value })}
+                            type="date"
+                            value={profileData.dateOfBirth}
+                            onChange={(e) => setProfileData({ ...profileData, dateOfBirth: e.target.value })}
                             className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-white"
-                            placeholder="Enter your work/profession"
                           />
                         ) : (
-                          <p className="p-3 bg-white dark:bg-gray-800 rounded-lg">{user.work || 'Not specified'}</p>
+                          <p className="p-3 bg-white dark:bg-gray-800 rounded-lg">
+                            {user.dateOfBirth ? new Date(user.dateOfBirth).toLocaleDateString() : 'Not specified'}
+                            {user.age && ` (${user.age} years old)`}
+                          </p>
                         )}
                       </div>
 
                       {isEditingProfile && (
                         <button
                           onClick={handleProfileUpdate}
+                          disabled={loading}
                           className="flex items-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                         >
                           <Save className="w-4 h-4" />
-                          <span>Save Changes</span>
+                          <span>{loading ? 'Saving...' : 'Save Changes'}</span>
                         </button>
                       )}
                     </div>
@@ -288,12 +321,17 @@ export default function Dashboard({ onClose }: DashboardProps) {
                   
                   <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-xl">
                     <div className="space-y-4">
-                      {user.activities && user.activities.length > 0 ? (
-                        user.activities.map((activity, index) => (
+                      {activities.length > 0 ? (
+                        activities.map((activity: any, index) => (
                           <div key={index} className="flex items-start space-x-4 p-4 bg-white dark:bg-gray-800 rounded-lg">
                             <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
                             <div className="flex-1">
-                              <p className="text-gray-800 dark:text-white">{activity}</p>
+                              <p className="text-gray-800 dark:text-white capitalize">
+                                {activity.action.replace('_', ' ')}
+                              </p>
+                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                                {new Date(activity.createdAt).toLocaleString()}
+                              </p>
                             </div>
                           </div>
                         ))
@@ -307,47 +345,15 @@ export default function Dashboard({ onClose }: DashboardProps) {
                 </div>
               )}
 
-              {activeTab === 'favorites' && (
+              {activeTab === 'users' && user.role === 'owner' && (
                 <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Favorite Projects</h2>
+                  <h2 className="text-2xl font-bold text-gray-800 dark:text-white">User Management</h2>
                   
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {favoriteProjects.length > 0 ? (
-                      favoriteProjects.map((project: any) => (
-                        <div key={project.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                          <img
-                            src={project.image}
-                            alt={project.title}
-                            className="w-full h-32 object-cover rounded-lg mb-4"
-                          />
-                          <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">
-                            {project.title}
-                          </h3>
-                          <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
-                            {project.description}
-                          </p>
-                          <div className="flex justify-between items-center">
-                            <span className="text-blue-600 dark:text-blue-400 font-semibold">
-                              {project.price}
-                            </span>
-                            <div className="flex items-center space-x-2 text-sm text-gray-500">
-                              <Heart className="w-4 h-4 text-red-500 fill-current" />
-                              <span>{project.likes.length}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="col-span-full text-center py-12">
-                        <Heart className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                        <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
-                          No favorites yet
-                        </h3>
-                        <p className="text-gray-600 dark:text-gray-400">
-                          Start liking projects to see them here!
-                        </p>
-                      </div>
-                    )}
+                  <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-xl">
+                    <p className="text-gray-600 dark:text-gray-400 text-center py-8">
+                      User management features will be implemented here.
+                      This includes viewing all users, managing roles, and viewing user activities.
+                    </p>
                   </div>
                 </div>
               )}

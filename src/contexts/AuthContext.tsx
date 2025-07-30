@@ -1,164 +1,161 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface User {
-  id: string;
+  _id: string;
   name: string;
   email: string;
+  role: 'user' | 'owner';
+  bio?: string;
   age?: number;
-  work?: string;
-  isOwner: boolean;
+  dateOfBirth?: string;
+  isActive: boolean;
+  isEmailVerified: boolean;
   loginCount: number;
-  activities: string[];
-  createdAt: Date;
+  lastLogin?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   login: (email: string, password: string) => Promise<boolean>;
   signup: (email: string, password: string, name: string) => Promise<boolean>;
   logout: () => void;
-  updateProfile: (updates: Partial<User>) => void;
-  addActivity: (activity: string) => void;
-  incrementLoginCount: () => void;
+  updateProfile: (updates: { name?: string; bio?: string; dateOfBirth?: string }) => Promise<boolean>;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const API_URL = 'http://localhost:5000/api';
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-      const userData = JSON.parse(storedUser);
-      setUser(userData);
+    const storedToken = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+    
+    if (storedToken && storedUser) {
+      setToken(storedToken);
+      setUser(JSON.parse(storedUser));
     }
+    setLoading(false);
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const users = JSON.parse(localStorage.getItem('users') || '[]');
-      const user = users.find((u: any) => u.email === email && u.password === password);
-      
-      if (user) {
-        // Check if user is already logged in with different account
-        const currentUser = localStorage.getItem('currentUser');
-        if (currentUser) {
-          const current = JSON.parse(currentUser);
-          if (current.email !== email) {
-            return false; // Can't login with different account
-          }
-        }
+      setLoading(true);
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-        const userData = { ...user };
-        delete userData.password;
-        userData.loginCount = (userData.loginCount || 0) + 1;
-        userData.activities = userData.activities || [];
-        userData.activities.unshift(`Logged in at ${new Date().toLocaleString()}`);
-        
-        // Update user in storage
-        const updatedUsers = users.map((u: any) => 
-          u.email === email ? { ...u, loginCount: userData.loginCount, activities: userData.activities } : u
-        );
-        localStorage.setItem('users', JSON.stringify(updatedUsers));
-        localStorage.setItem('currentUser', JSON.stringify(userData));
-        
-        setUser(userData);
+      const data = await response.json();
+
+      if (response.ok) {
+        setToken(data.token);
+        setUser(data.user);
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
         return true;
+      } else {
+        console.error('Login failed:', data.message);
+        return false;
       }
-      return false;
     } catch (error) {
       console.error('Login error:', error);
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signup = async (email: string, password: string, name: string): Promise<boolean> => {
     try {
-      const users = JSON.parse(localStorage.getItem('users') || '[]');
-      
-      // Check if user already exists
-      if (users.find((u: any) => u.email === email)) {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name, email, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setToken(data.token);
+        setUser(data.user);
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        return true;
+      } else {
+        console.error('Signup failed:', data.message);
         return false;
       }
-
-      // Check if this is the owner account
-      const isOwner = email === 'mohamedemad.front@gmail.com';
-
-      const newUser = {
-        id: Date.now().toString(),
-        name,
-        email,
-        password,
-        isOwner,
-        loginCount: 1,
-        activities: [`Account created at ${new Date().toLocaleString()}`],
-        createdAt: new Date()
-      };
-
-      users.push(newUser);
-      localStorage.setItem('users', JSON.stringify(users));
-
-      // Send email notification (simulated)
-      if (!isOwner) {
-        console.log(`Email sent to mohamedemad.front@gmail.com: New user ${name} (${email}) signed up!`);
-      }
-
-      const userData = { ...newUser };
-      delete userData.password;
-      localStorage.setItem('currentUser', JSON.stringify(userData));
-      
-      setUser(userData);
-      return true;
     } catch (error) {
       console.error('Signup error:', error);
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('currentUser');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setToken(null);
     setUser(null);
   };
 
-  const updateProfile = (updates: Partial<User>) => {
-    if (!user) return;
+  const updateProfile = async (updates: { name?: string; bio?: string; dateOfBirth?: string }): Promise<boolean> => {
+    if (!user || !token) return false;
 
-    const updatedUser = { ...user, ...updates };
-    setUser(updatedUser);
-    localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(updates),
+      });
 
-    // Update in users array
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    const updatedUsers = users.map((u: any) => 
-      u.id === user.id ? { ...u, ...updates } : u
-    );
-    localStorage.setItem('users', JSON.stringify(updatedUsers));
-  };
+      const data = await response.json();
 
-  const addActivity = (activity: string) => {
-    if (!user) return;
-
-    const newActivity = `${activity} at ${new Date().toLocaleString()}`;
-    const updatedActivities = [newActivity, ...(user.activities || [])].slice(0, 10);
-    
-    updateProfile({ activities: updatedActivities });
-  };
-
-  const incrementLoginCount = () => {
-    if (!user) return;
-    updateProfile({ loginCount: user.loginCount + 1 });
+      if (response.ok) {
+        setUser(data.user);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        return true;
+      } else {
+        console.error('Profile update failed:', data.message);
+        return false;
+      }
+    } catch (error) {
+      console.error('Profile update error:', error);
+      return false;
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <AuthContext.Provider value={{
       user,
+      token,
       login,
       signup,
       logout,
       updateProfile,
-      addActivity,
-      incrementLoginCount
+      loading
     }}>
       {children}
     </AuthContext.Provider>

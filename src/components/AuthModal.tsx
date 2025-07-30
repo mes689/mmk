@@ -17,7 +17,7 @@ export default function AuthModal({ onClose }: AuthModalProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const { login, signup } = useAuth();
+  const { login, signup, loading: authLoading } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,14 +30,14 @@ export default function AuthModal({ onClose }: AuthModalProps) {
         if (success) {
           onClose();
         } else {
-          setError('Invalid email or password. Or you may already be logged in with a different account.');
+          setError('Invalid email or password.');
         }
       } else {
         const success = await signup(formData.email, formData.password, formData.name);
         if (success) {
           onClose();
         } else {
-          setError('User already exists or registration failed');
+          setError('Registration failed. User may already exist.');
         }
       }
     } catch {
@@ -148,10 +148,10 @@ export default function AuthModal({ onClose }: AuthModalProps) {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || authLoading}
               className="w-full bg-gradient-to-r from-blue-600 to-red-600 text-white py-3 rounded-lg hover:from-blue-700 hover:to-red-700 transition-all transform hover:scale-105 font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
+              {loading || authLoading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
             </button>
           </form>
 
@@ -171,14 +171,14 @@ export default function AuthModal({ onClose }: AuthModalProps) {
             </button>
           </div>
 
-          {/* {!isLogin && (
+          {!isLogin && (
             <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <p className="text-sm text-blue-700 dark:text-blue-300">
-                <strong>Note:</strong> Use <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">mohamedemad.front@gmail.com</code> 
-                as email to get owner privileges (can publish blog posts).
+                <strong>Note:</strong> Use <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">owner@example.com</code> 
+                as email to get owner privileges.
               </p>
             </div>
-          )} */}
+          )}
         </div>
       </div>
     </div>

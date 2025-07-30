@@ -107,7 +107,7 @@ export default function Header({ onAuthClick, onDashboardClick, onLogoClick }: H
                 <div className="flex items-center space-x-2 bg-gradient-to-r from-blue-100 to-red-100 dark:from-blue-900 dark:to-red-900 px-3 py-1 rounded-full">
                   <User className="w-4 h-4" />
                   <span className="text-sm font-medium">{user.name}</span>
-                  {user.isOwner && (
+                  {user.role === 'owner' && (
                     <span className="text-xs bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full font-semibold">
                       OWNER
                     </span>
